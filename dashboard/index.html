@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PodSight AI — Real-Time Pod Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --orange: #f0883e; --red: #f85149;
+    --purple: #bc8cff; --cyan: #79c0ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size: 14px; }
+
+  /* ── Header ── */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
+  .logo-dot { width: 10px; height: 10px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.2)} }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .cluster-badge { background: var(--surface2); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px; font-size: 12px; color: var(--muted); }
+  .live-badge { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid rgba(63,185,80,.3); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+  /* ── Tabs ── */
+  .tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; gap: 0; overflow-x: auto; }
+  .tab { padding: 14px 18px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; font-size: 13px; transition: all .2s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-icon { margin-right: 6px; }
+
+  /* ── Main layout ── */
+  .main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Cards ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stat-card.green .stat-value { color: var(--green); }
+  .stat-card.yellow .stat-value { color: var(--yellow); }
+  .stat-card.red .stat-value { color: var(--red); }
+  .stat-card.blue .stat-value { color: var(--accent); }
+  .stat-card.purple .stat-value { color: var(--purple); }
+
+  /* ── Grid layouts ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+  @media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr;}}
+
+  /* ── Panel ── */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .panel-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .panel-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+  .badge-green { background: rgba(63,185,80,.15); color: var(--green); }
+  .badge-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .badge-red { background: rgba(248,81,73,.15); color: var(--red); }
+  .badge-blue { background: rgba(88,166,255,.15); color: var(--accent); }
+  .badge-purple { background: rgba(188,140,255,.15); color: var(--purple); }
+  .badge-orange { background: rgba(240,136,62,.15); color: var(--orange); }
+
+  /* ── Chart wrapper ── */
+  .chart-wrap { position: relative; height: 240px; }
+  .chart-wrap.tall { height: 300px; }
+
+  /* ── Pod table ── */
+  .pod-table { width: 100%; border-collapse: collapse; }
+  .pod-table th { text-align: left; padding: 8px 12px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  .pod-table td { padding: 10px 12px; border-bottom: 1px solid rgba(48,54,61,.5); vertical-align: middle; }
+  .pod-table tr:hover td { background: rgba(33,38,45,.8); }
+  .pod-name { font-family: 'SF Mono',Consolas,monospace; font-size: 12px; color: var(--accent); }
+  .ns-badge { background: var(--surface2); padding: 2px 7px; border-radius: 8px; font-size: 11px; color: var(--muted); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-error { background: var(--red); box-shadow: 0 0 6px var(--red); animation: pulse 1s infinite; }
+
+  /* ── Progress bars ── */
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+  .bar-fill.low { background: var(--green); }
+  .bar-fill.med { background: var(--yellow); }
+  .bar-fill.high { background: var(--orange); }
+  .bar-fill.crit { background: var(--red); }
+  .bar-val { font-size: 12px; color: var(--muted); width: 38px; text-align: right; font-family: monospace; }
+
+  /* ── Anomaly feed ── */
+  .anomaly-feed { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .anomaly-item { background: var(--surface2); border-radius: 8px; padding: 12px; border-left: 3px solid; display: flex; gap: 12px; align-items: flex-start; }
+  .anomaly-item.critical { border-color: var(--red); }
+  .anomaly-item.high { border-color: var(--orange); }
+  .anomaly-item.medium { border-color: var(--yellow); }
+  .anomaly-item.low { border-color: var(--green); }
+  .anomaly-icon { font-size: 18px; line-height: 1; }
+  .anomaly-body { flex: 1; }
+  .anomaly-title { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .anomaly-sub { font-size: 11px; color: var(--muted); }
+  .anomaly-time { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+  /* ── AI Agent cards ── */
+  .agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .agent-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .agent-icon { font-size: 24px; }
+  .agent-name { font-size: 15px; font-weight: 700; }
+  .agent-risk { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .risk-low { background: rgba(63,185,80,.2); color: var(--green); }
+  .risk-medium { background: rgba(210,153,34,.2); color: var(--yellow); }
+  .risk-high { background: rgba(240,136,62,.2); color: var(--orange); }
+  .risk-critical { background: rgba(248,81,73,.2); color: var(--red); }
+  .agent-analysis { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+  .agent-recs { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .agent-recs li { background: var(--surface2); padding: 8px 12px; border-radius: 6px; font-family: 'SF Mono',Consolas,monospace; font-size: 11px; color: var(--cyan); cursor: pointer; }
+  .agent-recs li:hover { background: var(--border); }
+  .agent-mode { font-size: 10px; color: var(--muted); margin-top: 10px; }
+
+  /* ── Dependency map canvas ── */
+  #depCanvas { width: 100%; height: 420px; background: var(--surface2); border-radius: 8px; cursor: grab; }
+  #depCanvas:active { cursor: grabbing; }
+  .dep-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px; }
+  .dep-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .dep-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* ── Security tab ── */
+  .threat-item { background: var(--surface2); border-radius: 8px; padding: 14px; margin-bottom: 10px; border-left: 3px solid; }
+  .threat-item.critical { border-color: var(--red); }
+  .threat-item.high { border-color: var(--orange); }
+  .threat-item.medium { border-color: var(--yellow); }
+  .threat-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .threat-type { font-size: 12px; font-weight: 700; color: var(--text); }
+  .mitre-badge { background: rgba(188,140,255,.2); color: var(--purple); padding: 2px 8px; border-radius: 8px; font-size: 11px; font-family: monospace; }
+  .threat-evidence { font-size: 11px; color: var(--muted); font-family: monospace; margin-bottom: 6px; background: var(--bg); padding: 6px 10px; border-radius: 6px; }
+  .threat-pod { font-size: 12px; color: var(--accent); font-family: monospace; }
+  .cvss-badge { padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700; }
+  .cvss-critical { background: rgba(248,81,73,.2); color: var(--red); }
+  .cvss-high { background: rgba(240,136,62,.2); color: var(--orange); }
+  .cvss-medium { background: rgba(210,153,34,.2); color: var(--yellow); }
+  .rem-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .rem-item { background: var(--bg); padding: 5px 10px; border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--cyan); }
+
+  /* ── Cluster score ring ── */
+  .score-ring-wrap { display: flex; align-items: center; gap: 20px; }
+  .score-ring { position: relative; width: 100px; height: 100px; }
+  .score-ring svg { transform: rotate(-90deg); }
+  .score-ring .score-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; }
+
+  /* ── Recommendations ── */
+  .rec-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .rec-priority { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+  .rec-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .rec-desc { font-size: 13px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+  .cmd-block { background: var(--bg); padding: 10px 14px; border-radius: 6px; font-family: monospace; font-size: 12px; color: var(--cyan); line-height: 1.7; }
+
+  /* ── Filter bar ── */
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+  .search-input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 13px; width: 220px; }
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Tooltip ── */
+  .tooltip { position: fixed; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; z-index: 999; display: none; max-width: 240px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    PodSight AI
+  </div>
+  <div class="header-right">
+    <div class="cluster-badge" id="clusterBadge">🔄 Connecting…</div>
+    <div class="live-badge">● LIVE</div>
+    <div style="font-size:11px;color:var(--muted)" id="lastUpdate">—</div>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('overview')"><span class="tab-icon">📊</span>Overview</div>
+  <div class="tab" onclick="showTab('pods')"><span class="tab-icon">📦</span>Pod Explorer</div>
+  <div class="tab" onclick="showTab('anomalies')"><span class="tab-icon">⚡</span>Anomalies</div>
+  <div class="tab" onclick="showTab('agents')"><span class="tab-icon">🤖</span>AI Agents</div>
+  <div class="tab" onclick="showTab('depmap')"><span class="tab-icon">🕸️</span>Dependency Map</div>
+  <div class="tab" onclick="showTab('security')"><span class="tab-icon">🔐</span>Security</div>
+  <div class="tab" onclick="showTab('recs')"><span class="tab-icon">💡</span>Recommendations</div>
+</div>
+
+<div class="main">
+
+  <!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+  <div id="tab-overview" class="tab-content active">
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Pods</div>
+        <div class="stat-value" id="sumPods">—</div>
+        <div class="stat-sub" id="sumNs">— namespaces</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Healthy Pods</div>
+        <div class="stat-value" id="sumHealthy">—</div>
+        <div class="stat-sub">Running + within limits</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-label">Avg CPU</div>
+        <div class="stat-value" id="sumCpu">—%</div>
+        <div class="stat-sub">Across all pods</div>
+      </div>
+      <div class="stat-card orange" style="--orange:#f0883e">
+        <div class="stat-label">Avg Memory</div>
+        <div class="stat-value" id="sumMem">—%</div>
+        <div class="stat-sub">Across all pods</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Anomalies</div>
+        <div class="stat-value" id="sumAnomalies">—</div>
+        <div class="stat-sub">Active detections</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-label">Total Restarts</div>
+        <div class="stat-value" id="sumRestarts">—</div>
+        <div class="stat-sub">All namespaces</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">📈 Live CPU Usage — Top 8 Pods</span>
+          <span class="panel-badge badge-blue">5s refresh</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="cpuChart"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">💾 Live Memory Usage — Top 8 Pods</span>
+          <span class="panel-badge badge-blue">5s refresh</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="memChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">⚡ Live Anomaly Feed</span>
+          <span class="panel-badge badge-red" id="anomalyCountBadge">0</span>
+        </div>
+        <div class="anomaly-feed" id="anomalyFeed">
+          <div style="color:var(--muted);text-align:center;padding:20px">Collecting data…</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">🌐 Namespace Distribution</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="nsChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ POD EXPLORER ═══════════════════ -->
+  <div id="tab-pods" class="tab-content">
+    <div class="filter-bar">
+      <select class="filter-select" id="nsFilter" onchange="filterPods()">
+        <option value="all">All Namespaces</option>
+      </select>
+      <input class="search-input" id="podSearch" placeholder="🔍 Search pods…" oninput="filterPods()"/>
+      <select class="filter-select" id="sortFilter" onchange="filterPods()">
+        <option value="cpu">Sort: CPU ↓</option>
+        <option value="memory">Sort: Memory ↓</option>
+        <option value="restarts">Sort: Restarts ↓</option>
+        <option value="name">Sort: Name</option>
+      </select>
+    </div>
+    <div class="panel" style="padding:0;overflow:auto">
+      <table class="pod-table">
+        <thead>
+          <tr>
+            <th>Status</th><th>Pod Name</th><th>Namespace</th>
+            <th>CPU %</th><th>Memory %</th><th>Disk %</th>
+            <th>Net RX</th><th>Net TX</th><th>Restarts</th><th>Uptime</th>
+          </tr>
+        </thead>
+        <tbody id="podTableBody">
+          <tr><td colspan="10" style="text-align:center;padding:30px;color:var(--muted)">Loading pods…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ANOMALIES ═══════════════════ -->
+  <div id="tab-anomalies" class="tab-content">
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">📊 Anomaly Type Distribution</span></div>
+        <div class="chart-wrap"><canvas id="anomalyTypeChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">🎯 Severity Breakdown</span></div>
+        <div class="chart-wrap"><canvas id="severityChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">⚡ All Anomaly Events</span>
+        <span class="panel-badge badge-red" id="totalAnomalyBadge">0</span>
+      </div>
+      <div id="fullAnomalyFeed" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ AI AGENTS ═══════════════════ -->
+  <div id="tab-agents" class="tab-content">
+    <div class="panel" style="margin-bottom:16px;background:rgba(88,166,255,.05);border-color:rgba(88,166,255,.2)">
+      <div style="font-size:13px;color:var(--muted);line-height:1.6">
+        🤖 <strong style="color:var(--accent)">Multi-Agent AI Framework</strong> — Four specialist agents analyze CPU, memory, storage, and network metrics independently. 
+        Each agent runs every 30 seconds and provides root-cause analysis, risk assessment, and kubectl remediation commands.
+        <span id="agentModeLabel" style="margin-left:10px;padding:2px 8px;background:rgba(63,185,80,.1);color:var(--green);border-radius:10px;font-size:11px">Loading…</span>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="agent-card" id="cpuAgent"><div style="color:var(--muted);padding:20px">Analyzing CPU patterns…</div></div>
+      <div class="agent-card" id="memAgent"><div style="color:var(--muted);padding:20px">Analyzing memory patterns…</div></div>
+      <div class="agent-card" id="storAgent"><div style="color:var(--muted);padding:20px">Analyzing storage patterns…</div></div>
+      <div class="agent-card" id="netAgent"><div style="color:var(--muted);padding:20px">Analyzing network patterns…</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ DEPENDENCY MAP ═══════════════════ -->
+  <div id="tab-depmap" class="tab-content">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">🕸️ Service Dependency Graph</span>
+        <span class="panel-badge badge-blue">Interactive — Drag nodes</span>
+      </div>
+      <canvas id="depCanvas"></canvas>
+      <div class="dep-legend">
+        <div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--green)"></div>Healthy (CPU &lt;60%)</div>
+        <div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--yellow)"></div>Warning (CPU 60-80%)</div>
+        <div class="dep-legend-item"><div class="dep-legend-dot" style="background:var(--red)"></div>Critical (CPU &gt;80%)</div>
+        <div class="dep-legend-item" style="font-style:italic">Node size = Memory usage · Hover for details</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ SECURITY ═══════════════════ -->
+  <div id="tab-security" class="tab-content">
+    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="stat-card">
+        <div class="stat-label">Cluster Risk Score</div>
+        <div class="score-ring-wrap">
+          <div class="score-ring">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--surface2)" stroke-width="10"/>
+              <circle id="scoreArc" cx="50" cy="50" r="42" fill="none" stroke="var(--green)" stroke-width="10"
+                stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round"/>
+            </svg>
+            <div class="score-num" id="clusterScoreNum">—</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">100 = perfect<br>0 = compromised</div>
+        </div>
+      </div>
+      <div class="stat-card red"><div class="stat-label">Critical Threats</div><div class="stat-value" id="critCount">—</div></div>
+      <div class="stat-card" style="--orange:#f0883e"><div class="stat-label">High Severity</div><div class="stat-value" style="color:var(--orange)" id="highCount">—</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Medium Severity</div><div class="stat-value" id="medCount">—</div></div>
+      <div class="stat-card purple"><div class="stat-label">MITRE Tactics</div><div class="stat-value" id="tacticsCount">—</div></div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">🎯 MITRE ATT&CK Tactic Distribution</span></div>
+        <div class="chart-wrap"><canvas id="mitreChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">📊 Threat Type Breakdown</span></div>
+        <div class="chart-wrap"><canvas id="threatTypeChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">🚨 Active Threats — MITRE ATT&CK Mapped</span>
+        <span class="panel-badge badge-red" id="threatCountBadge">0</span>
+      </div>
+      <div id="threatFeed"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ RECOMMENDATIONS ═══════════════════ -->
+  <div id="tab-recs" class="tab-content">
+    <div class="panel" style="margin-bottom:16px;background:rgba(63,185,80,.05);border-color:rgba(63,185,80,.2)">
+      <span style="font-size:13px;color:var(--muted)">💡 AI-generated recommendations based on live cluster state. Commands are ready to run.</span>
+    </div>
+    <div id="recsList"></div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════
+const API = "http://localhost:5000/api";
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let allPods = [], allAnomalies = [], agentData = {}, securityData = {};
+let cpuChart, memChart, nsChart, anomalyTypeChart, severityChart, mitreChart, threatTypeChart;
+
+// ═══════════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ═══════════════════════════════════════════════════════════
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.closest('.tab').classList.add('active');
+  if (name === 'depmap') drawDependencyMap();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FETCH HELPERS
+// ═══════════════════════════════════════════════════════════
+async function apiFetch(path) {
+  try {
+    const r = await fetch(API + path);
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MAIN REFRESH LOOP
+// ═══════════════════════════════════════════════════════════
+async function refresh() {
+  const [summary, pods, anomalies, agents, secThreats, secSummary, secScores] = await Promise.all([
+    apiFetch('/summary'),
+    apiFetch('/pods'),
+    apiFetch('/anomalies?limit=50'),
+    apiFetch('/agents'),
+    apiFetch('/security/threats'),
+    apiFetch('/security/summary'),
+    apiFetch('/security/scores'),
+  ]);
+
+  if (summary) updateSummary(summary);
+  if (pods) { allPods = pods; updateOverviewCharts(pods); updatePodTable(pods); populateNsFilter(pods); }
+  if (anomalies) { allAnomalies = anomalies; updateAnomalyFeed(anomalies); updateAnomalyCharts(anomalies); }
+  if (agents) { agentData = agents; updateAgents(agents); updateRecommendations(agents); }
+  if (secThreats && secSummary && secScores) {
+    securityData = {threats: secThreats, summary: secSummary, scores: secScores};
+    updateSecurity(secThreats, secSummary, secScores);
+  }
+
+  document.getElementById('lastUpdate').textContent = '↻ ' + new Date().toLocaleTimeString();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SUMMARY
+// ═══════════════════════════════════════════════════════════
+function updateSummary(s) {
+  document.getElementById('sumPods').textContent = s.total_pods || 0;
+  document.getElementById('sumNs').textContent = (s.namespace_count || 0) + ' namespaces';
+  document.getElementById('sumHealthy').textContent = s.healthy_pods || 0;
+  document.getElementById('sumCpu').textContent = (s.avg_cpu || 0) + '%';
+  document.getElementById('sumMem').textContent = (s.avg_memory || 0) + '%';
+  document.getElementById('sumAnomalies').textContent = s.anomaly_count || 0;
+  document.getElementById('sumRestarts').textContent = s.total_restarts || 0;
+  document.getElementById('clusterBadge').textContent = '☸️ minikube · ' + (s.total_pods || 0) + ' pods · ' + (s.namespace_count || 0) + ' ns';
+  document.getElementById('anomalyCountBadge').textContent = s.anomaly_count || 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  OVERVIEW CHARTS
+// ═══════════════════════════════════════════════════════════
+function barColor(val) {
+  if (val >= 80) return 'rgba(248,81,73,.8)';
+  if (val >= 60) return 'rgba(240,136,62,.8)';
+  if (val >= 40) return 'rgba(210,153,34,.8)';
+  return 'rgba(63,185,80,.8)';
+}
+
+function updateOverviewCharts(pods) {
+  const top8cpu = [...pods].sort((a,b) => b.cpu - a.cpu).slice(0, 8);
+  const top8mem = [...pods].sort((a,b) => b.memory - a.memory).slice(0, 8);
+
+  // CPU chart
+  if (!cpuChart) {
+    cpuChart = new Chart(document.getElementById('cpuChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(48,54,61,.3)' } },
+                  y: { min: 0, max: 100, ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,.3)' } } } }
+    });
+  }
+  cpuChart.data.labels = top8cpu.map(p => p.name.length > 22 ? p.name.slice(0,20)+'…' : p.name);
+  cpuChart.data.datasets[0].data = top8cpu.map(p => p.cpu);
+  cpuChart.data.datasets[0].backgroundColor = top8cpu.map(p => barColor(p.cpu));
+  cpuChart.update('none');
+
+  // Memory chart
+  if (!memChart) {
+    memChart = new Chart(document.getElementById('memChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(48,54,61,.3)' } },
+                  y: { min: 0, max: 100, ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,.3)' } } } }
+    });
+  }
+  memChart.data.labels = top8mem.map(p => p.name.length > 22 ? p.name.slice(0,20)+'…' : p.name);
+  memChart.data.datasets[0].data = top8mem.map(p => p.memory);
+  memChart.data.datasets[0].backgroundColor = top8mem.map(p => barColor(p.memory));
+  memChart.update('none');
+
+  // Namespace donut
+  const nsCounts = {};
+  pods.forEach(p => nsCounts[p.namespace] = (nsCounts[p.namespace] || 0) + 1);
+  const nsColors = ['#58a6ff','#3fb950','#d29922','#f0883e','#f85149','#bc8cff','#79c0ff','#56d364'];
+  if (!nsChart) {
+    nsChart = new Chart(document.getElementById('nsChart'), {
+      type: 'doughnut',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: nsColors, borderColor: '#21262d', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#8b949e', font: { size: 11 } } } } }
+    });
+  }
+  nsChart.data.labels = Object.keys(nsCounts);
+  nsChart.data.datasets[0].data = Object.values(nsCounts);
+  nsChart.update('none');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ANOMALY FEED
+// ═══════════════════════════════════════════════════════════
+const ANOMALY_ICONS = { CPU_SPIKE: '🔥', MEMORY_LEAK: '💧', CRASH_LOOP: '🔄', POD_FAILURE: '💥', default: '⚠️' };
+
+function anomalyHTML(a) {
+  const icon = ANOMALY_ICONS[a.type] || ANOMALY_ICONS.default;
+  const t = new Date(a.timestamp + 'Z').toLocaleTimeString();
+  return `<div class="anomaly-item ${a.severity}">
+    <div class="anomaly-icon">${icon}</div>
+    <div class="anomaly-body">
+      <div class="anomaly-title">${a.type.replace(/_/g,' ')} — <span style="color:var(--accent);font-family:monospace">${a.pod}</span></div>
+      <div class="anomaly-sub">${a.message} · <span class="ns-badge">${a.namespace}</span></div>
+    </div>
+    <div class="anomaly-time">${t}</div>
+  </div>`;
+}
+
+function updateAnomalyFeed(anomalies) {
+  const recent = [...anomalies].reverse().slice(0, 8);
+  document.getElementById('anomalyFeed').innerHTML = recent.length
+    ? recent.map(anomalyHTML).join('')
+    : '<div style="color:var(--muted);text-align:center;padding:20px">No anomalies detected 🎉</div>';
+  document.getElementById('fullAnomalyFeed').innerHTML = [...anomalies].reverse().map(anomalyHTML).join('');
+  document.getElementById('totalAnomalyBadge').textContent = anomalies.length;
+}
+
+function updateAnomalyCharts(anomalies) {
+  // Type distribution
+  const typeCounts = {};
+  anomalies.forEach(a => typeCounts[a.type] = (typeCounts[a.type] || 0) + 1);
+  const colors = ['#f85149','#f0883e','#d29922','#58a6ff','#bc8cff','#3fb950'];
+  if (!anomalyTypeChart) {
+    anomalyTypeChart = new Chart(document.getElementById('anomalyTypeChart'), {
+      type: 'doughnut',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: colors, borderColor: '#21262d', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#8b949e', font: { size: 11 } } } } }
+    });
+  }
+  anomalyTypeChart.data.labels = Object.keys(typeCounts).map(k => k.replace(/_/g,' '));
+  anomalyTypeChart.data.datasets[0].data = Object.values(typeCounts);
+  anomalyTypeChart.update('none');
+
+  // Severity bar
+  const sev = { critical: 0, high: 0, medium: 0, low: 0 };
+  anomalies.forEach(a => sev[a.severity] = (sev[a.severity] || 0) + 1);
+  if (!severityChart) {
+    severityChart = new Chart(document.getElementById('severityChart'), {
+      type: 'bar',
+      data: { labels: ['Critical','High','Medium','Low'],
+              datasets: [{ data: [0,0,0,0], backgroundColor: ['#f85149','#f0883e','#d29922','#3fb950'], borderRadius: 6 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e' }, grid: { display: false } },
+                  y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,.3)' } } } }
+    });
+  }
+  severityChart.data.datasets[0].data = [sev.critical, sev.high, sev.medium, sev.low];
+  severityChart.update('none');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  POD TABLE
+// ═══════════════════════════════════════════════════════════
+function populateNsFilter(pods) {
+  const ns = [...new Set(pods.map(p => p.namespace))].sort();
+  const sel = document.getElementById('nsFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">All Namespaces</option>' + ns.map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.value = current;
+}
+
+function barFillClass(v) {
+  if (v >= 80) return 'crit';
+  if (v >= 60) return 'high';
+  if (v >= 40) return 'med';
+  return 'low';
+}
+
+function makeBar(val) {
+  return `<div class="bar-wrap"><div class="bar"><div class="bar-fill ${barFillClass(val)}" style="width:${val}%"></div></div><div class="bar-val">${val}%</div></div>`;
+}
+
+function filterPods() {
+  const ns = document.getElementById('nsFilter').value;
+  const q  = document.getElementById('podSearch').value.toLowerCase();
+  const sort = document.getElementById('sortFilter').value;
+  let pods = allPods.filter(p => (ns === 'all' || p.namespace === ns) && (!q || p.name.includes(q) || p.namespace.includes(q)));
+  if (sort === 'cpu') pods.sort((a,b) => b.cpu - a.cpu);
+  else if (sort === 'memory') pods.sort((a,b) => b.memory - a.memory);
+  else if (sort === 'restarts') pods.sort((a,b) => b.restarts - a.restarts);
+  else pods.sort((a,b) => a.name.localeCompare(b.name));
+  updatePodTable(pods);
+}
+
+function updatePodTable(pods) {
+  if (!pods.length) { document.getElementById('podTableBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--muted)">No pods found</td></tr>'; return; }
+  document.getElementById('podTableBody').innerHTML = pods.map(p => `
+    <tr>
+      <td><span class="status-dot ${p.status === 'Running' ? 'status-running' : 'status-error'}"></span>${p.status}</td>
+      <td class="pod-name">${p.name}</td>
+      <td><span class="ns-badge">${p.namespace}</span></td>
+      <td>${makeBar(p.cpu)}</td>
+      <td>${makeBar(p.memory)}</td>
+      <td>${makeBar(p.disk)}</td>
+      <td style="font-family:monospace;font-size:12px">${p.net_rx} Mb</td>
+      <td style="font-family:monospace;font-size:12px">${p.net_tx} Mb</td>
+      <td style="color:${p.restarts > 3 ? 'var(--red)' : p.restarts > 0 ? 'var(--yellow)' : 'var(--green)'}">${p.restarts}</td>
+      <td style="color:var(--muted);font-size:12px">${p.uptime || '—'}</td>
+    </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AI AGENTS
+// ═══════════════════════════════════════════════════════════
+const AGENT_ICONS = { cpu: '⚙️', memory: '💾', storage: '🗄️', network: '🌐' };
+const AGENT_IDS = { cpu: 'cpuAgent', memory: 'memAgent', storage: 'storAgent', network: 'netAgent' };
+
+function agentCardHTML(data) {
+  const recs = (data.recommendations || []).map(r => `<li title="Click to copy" onclick="navigator.clipboard.writeText(this.textContent)">${r}</li>`).join('');
+  const metrics = Object.entries(data.metrics || {}).map(([k,v]) => `<span style="background:var(--surface2);padding:2px 8px;border-radius:8px;font-size:11px;margin-right:6px">${k.replace(/_/g,' ')}: <b style="color:var(--accent)">${v}</b></span>`).join('');
+  return `
+    <div class="agent-header">
+      <span class="agent-icon">${AGENT_ICONS[data.agent?.split(' ')[0]?.toLowerCase()] || '🤖'}</span>
+      <span class="agent-name">${data.agent || '—'}</span>
+      <span class="agent-risk risk-${data.risk || 'low'}">${(data.risk || 'low').toUpperCase()}</span>
+    </div>
+    <div style="margin-bottom:10px">${metrics}</div>
+    <div class="agent-analysis">${data.analysis || '—'}</div>
+    <ul class="agent-recs">${recs}</ul>
+    <div class="agent-mode">Mode: ${data.mode || 'rule-based'} · Click commands to copy</div>`;
+}
+
+function updateAgents(data) {
+  ['cpu','memory','storage','network'].forEach(type => {
+    if (data[type]) {
+      document.getElementById(AGENT_IDS[type]).innerHTML = agentCardHTML(data[type]);
+    }
+  });
+  const mode = (data.cpu?.mode === 'ai-powered') ? '✨ AI-Powered (Claude)' : '📐 Rule-Based Mode';
+  document.getElementById('agentModeLabel').textContent = mode;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DEPENDENCY MAP
+// ═══════════════════════════════════════════════════════════
+let depNodes = {}, depEdges = [], dragging = null, dragOffX = 0, dragOffY = 0;
+let depInitialized = false;
+
+function drawDependencyMap() {
+  const canvas = document.getElementById('depCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  const W = canvas.width, H = canvas.height;
+
+  // Initialize node positions from pod data
+  if (!depInitialized && allPods.length) {
+    depInitialized = true;
+    depEdges = [];
+    allPods.forEach((pod, i) => {
+      const angle = (2 * Math.PI * i) / allPods.length;
+      const r = Math.min(W, H) * 0.32;
+      depNodes[pod.name] = {
+        x: W/2 + r * Math.cos(angle),
+        y: H/2 + r * Math.sin(angle),
+        pod: pod,
+      };
+    });
+    allPods.forEach(pod => {
+      (pod.dependencies || []).forEach(dep => {
+        if (depNodes[dep]) depEdges.push([pod.name, dep]);
+      });
+    });
+  } else if (!depInitialized) { return; }
+
+  // Update pod data in nodes
+  allPods.forEach(pod => { if (depNodes[pod.name]) depNodes[pod.name].pod = pod; });
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw edges
+  depEdges.forEach(([from, to]) => {
+    const a = depNodes[from], b = depNodes[to];
+    if (!a || !b) return;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = 'rgba(88,166,255,.25)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Arrow
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    const r = nodeRadius(b.pod) + 4;
+    const ax = b.x - r * Math.cos(angle), ay = b.y - r * Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - 8 * Math.cos(angle - 0.4), ay - 8 * Math.sin(angle - 0.4));
+    ctx.lineTo(ax - 8 * Math.cos(angle + 0.4), ay - 8 * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(88,166,255,.4)';
+    ctx.fill();
+  });
+
+  // Draw nodes
+  Object.values(depNodes).forEach(({ x, y, pod }) => {
+    const r = nodeRadius(pod);
+    const color = nodeColor(pod);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = color + '33';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = '10px -apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    const label = pod.name.length > 18 ? pod.name.slice(0, 16) + '…' : pod.name;
+    ctx.fillText(label, x, y + r + 14);
+    // CPU text inside
+    ctx.fillStyle = color;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(pod.cpu + '%', x, y + 4);
+  });
+}
+
+function nodeRadius(pod) { return 16 + (pod?.memory || 30) / 8; }
+function nodeColor(pod) {
+  const cpu = pod?.cpu || 0;
+  if (cpu >= 80) return '#f85149';
+  if (cpu >= 60) return '#d29922';
+  return '#3fb950';
+}
+
+// Drag support
+function setupDepCanvasDrag() {
+  const canvas = document.getElementById('depCanvas');
+  canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    Object.entries(depNodes).forEach(([name, n]) => {
+      if (Math.hypot(n.x - mx, n.y - my) < nodeRadius(n.pod) + 4) {
+        dragging = name;
+        dragOffX = n.x - mx;
+        dragOffY = n.y - my;
+      }
+    });
+  });
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    if (dragging) {
+      depNodes[dragging].x = e.clientX - rect.left + dragOffX;
+      depNodes[dragging].y = e.clientY - rect.top + dragOffY;
+      drawDependencyMap();
+    }
+    // Tooltip
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let found = false;
+    Object.values(depNodes).forEach(n => {
+      if (Math.hypot(n.x - mx, n.y - my) < nodeRadius(n.pod) + 4) {
+        const tt = document.getElementById('tooltip');
+        tt.innerHTML = `<b>${n.pod.name}</b><br>NS: ${n.pod.namespace}<br>CPU: ${n.pod.cpu}% | Mem: ${n.pod.memory}%<br>Restarts: ${n.pod.restarts}`;
+        tt.style.display = 'block';
+        tt.style.left = (e.clientX + 12) + 'px';
+        tt.style.top = (e.clientY - 10) + 'px';
+        found = true;
+      }
+    });
+    if (!found) document.getElementById('tooltip').style.display = 'none';
+  });
+  canvas.addEventListener('mouseup', () => { dragging = null; });
+  canvas.addEventListener('mouseleave', () => { dragging = null; document.getElementById('tooltip').style.display = 'none'; });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SECURITY
+// ═══════════════════════════════════════════════════════════
+function cvssClass(score) {
+  if (score >= 9) return 'cvss-critical';
+  if (score >= 7) return 'cvss-high';
+  return 'cvss-medium';
+}
+
+function updateSecurity(threats, summary, scores) {
+  // Summary cards
+  document.getElementById('critCount').textContent = summary.critical_count || 0;
+  document.getElementById('highCount').textContent = summary.high_count || 0;
+  document.getElementById('medCount').textContent = summary.medium_count || 0;
+  document.getElementById('tacticsCount').textContent = Object.keys(summary.mitre_tactics || {}).length;
+  document.getElementById('threatCountBadge').textContent = threats.length;
+
+  // Cluster score ring
+  const score = scores.cluster_score || 100;
+  document.getElementById('clusterScoreNum').textContent = score;
+  const arc = document.getElementById('scoreArc');
+  const circ = 264;
+  arc.style.strokeDashoffset = circ - (score / 100) * circ;
+  arc.style.stroke = score >= 70 ? '#3fb950' : score >= 40 ? '#d29922' : '#f85149';
+
+  // MITRE chart
+  const tactics = summary.mitre_tactics || {};
+  const mColors = ['#f85149','#f0883e','#d29922','#bc8cff','#58a6ff','#3fb950','#79c0ff','#56d364'];
+  if (!mitreChart) {
+    mitreChart = new Chart(document.getElementById('mitreChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: mColors, borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,.3)' } },
+                  y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { display: false } } } }
+    });
+  }
+  mitreChart.data.labels = Object.keys(tactics);
+  mitreChart.data.datasets[0].data = Object.values(tactics);
+  mitreChart.update('none');
+
+  // Threat type donut
+  const typeCounts = {};
+  threats.forEach(t => typeCounts[t.type] = (typeCounts[t.type] || 0) + 1);
+  if (!threatTypeChart) {
+    threatTypeChart = new Chart(document.getElementById('threatTypeChart'), {
+      type: 'doughnut',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: mColors, borderColor: '#21262d', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#8b949e', font: { size: 10 } } } } }
+    });
+  }
+  threatTypeChart.data.labels = Object.keys(typeCounts).map(k => k.replace(/_/g,' '));
+  threatTypeChart.data.datasets[0].data = Object.values(typeCounts);
+  threatTypeChart.update('none');
+
+  // Threat feed
+  document.getElementById('threatFeed').innerHTML = threats.map(t => {
+    const rems = (t.remediation || []).map(r => `<div class="rem-item">${r}</div>`).join('');
+    return `<div class="threat-item ${t.severity}">
+      <div class="threat-header">
+        <span class="threat-type">${t.type.replace(/_/g,' ')}</span>
+        <span class="mitre-badge">${t.mitre_id || ''} · ${t.mitre_tactic || ''}</span>
+        <span class="cvss-badge ${cvssClass(t.cvss || 5)}">CVSS ${t.cvss || '—'}</span>
+        <span class="panel-badge badge-${t.severity === 'critical' ? 'red' : t.severity === 'high' ? 'orange' : 'yellow'}">${t.severity.toUpperCase()}</span>
+      </div>
+      <div class="threat-pod">📦 ${t.pod} <span class="ns-badge">${t.namespace}</span></div>
+      <div style="margin:8px 0;font-size:13px;color:var(--text)">${t.detail}</div>
+      <div class="threat-evidence">${t.evidence || ''}</div>
+      ${t.ai_insight ? `<div style="margin-top:8px;font-size:12px;color:var(--purple);background:rgba(188,140,255,.05);padding:8px;border-radius:6px">✨ AI Insight: ${t.ai_insight}</div>` : ''}
+      <div class="rem-list">${rems}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RECOMMENDATIONS
+// ═══════════════════════════════════════════════════════════
+const REC_PRIORITY_COLORS = { critical: 'background:rgba(248,81,73,.2);color:var(--red)', high: 'background:rgba(240,136,62,.2);color:var(--orange)', medium: 'background:rgba(210,153,34,.2);color:var(--yellow)', low: 'background:rgba(63,185,80,.2);color:var(--green)' };
+
+function updateRecommendations(agents) {
+  const recs = [];
+  ['cpu','memory','storage','network'].forEach(type => {
+    const a = agents[type];
+    if (!a) return;
+    (a.recommendations || []).forEach(r => {
+      recs.push({ priority: a.risk || 'low', agent: a.agent, cmd: r, analysis: a.analysis });
+    });
+  });
+
+  // Sort by priority
+  const order = { critical: 0, high: 1, medium: 2, low: 3 };
+  recs.sort((a, b) => (order[a.priority] || 3) - (order[b.priority] || 3));
+
+  document.getElementById('recsList').innerHTML = recs.map(r => `
+    <div class="rec-item">
+      <span class="rec-priority" style="${REC_PRIORITY_COLORS[r.priority] || ''}">${r.priority.toUpperCase()}</span>
+      <div class="rec-title">${r.agent}</div>
+      <div class="rec-desc">${r.analysis}</div>
+      <div class="cmd-block">${r.cmd}</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+setupDepCanvasDrag();
+refresh();
+setInterval(refresh, 5000);
+setInterval(() => { if (document.getElementById('tab-depmap').classList.contains('active')) drawDependencyMap(); }, 5000);
+</script>
+</body>
+</html>

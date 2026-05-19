@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pod-ai-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: ANTHROPIC_API_KEY
+        sync: false   # Set this manually in Render dashboard if you want AI mode
+    autoDeploy: true
